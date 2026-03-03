@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Online 3D Racing</title>
+<style>
+body{margin:0;overflow:hidden;background:#000}
+#menu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:white;text-align:center}
+</style>
+</head>
+<body>
+
+<div id="menu">
+<h1>Online Racing</h1>
+<input id="room" placeholder="Room Name">
+<br><br>
+<button onclick="start()">Join</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+let scene,camera,renderer,clock;
+let socket,playerId;
+let playersMeshes={};
+let keys={};
+
+function start(){
+    const room=document.getElementById("room").value.trim();
+    if(!room) return alert("Enter room");
+
+    socket=new WebSocket(location.origin.replace(/^http/,'ws'));
+
+    socket.onopen=()=>{
+        socket.send(JSON.stringify({type:"join",room}));
+        init();
+    };
+
+    socket.onmessage=(msg)=>{
+        const data=JSON.parse(msg.data);
+
+        if(data.type==="init") playerId=data.id;
+
+        if(data.type==="state"){
+            updatePlayers(data.players);
+        }
+    };
+}
+
+function init(){
+    document.getElementById("menu").style.display="none";
+
+    scene=new THREE.Scene();
+    scene.background=new THREE.Color(0x87ceeb);
+
+    camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,.1,5000);
+    renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff,.8));
+
+    let ground=new THREE.Mesh(
+        new THREE.PlaneGeometry(5000,400),
+        new THREE.MeshBasicMaterial({color:0x444444})
+    );
+    ground.rotation.x=-Math.PI/2;
+    scene.add(ground);
+
+    clock=new THREE.Clock();
+
+    window.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+    window.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+    animate();
+}
+
+function updatePlayers(players){
+    for(let id in players){
+        if(!playersMeshes[id]){
+            let mesh=new THREE.Mesh(
+                new THREE.BoxGeometry(6,4,10),
+                new THREE.MeshBasicMaterial({color:id===playerId?0x00ffff:0xff0000})
+            );
+            scene.add(mesh);
+            playersMeshes[id]=mesh;
+        }
+        playersMeshes[id].position.set(players[id].x,2,players[id].z);
+    }
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+
+    if(socket && socket.readyState===1){
+        socket.send(JSON.stringify({
+            type:"input",
+            keys:keys
+        }));
+    }
+
+    if(playersMeshes[playerId]){
+        let p=playersMeshes[playerId];
+        camera.position.set(p.position.x-60,40,120);
+        camera.lookAt(p.position);
+    }
+
+    renderer.render(scene,camera);
+}
+</script>
+</body>
+</html>
